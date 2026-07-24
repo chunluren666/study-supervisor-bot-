@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>学习监督机器人 - 管理面板</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #f5f7fa; color: #333; }
+.header { background: #4f46e5; color: #fff; padding: 20px 30px; }
+.header h1 { font-size: 22px; }
+.header p { opacity: 0.8; margin-top: 4px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+.card { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.card h2 { font-size: 16px; margin-bottom: 14px; color: #4f46e5; border-bottom: 2px solid #e0e7ff; padding-bottom: 8px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 14px; }
+th { background: #f8fafc; font-weight: 600; color: #555; }
+.tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.tag-pending { background: #fef3c7; color: #92400e; }
+.tag-submitted { background: #dbeafe; color: #1e40af; }
+.tag-approved { background: #d1fae5; color: #065f46; }
+.tag-rejected { background: #fee2e2; color: #991b1b; }
+.tag-overdue { background: #fce7f3; color: #9d174d; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.stat { text-align: center; padding: 20px; background: #f8fafc; border-radius: 8px; }
+.stat .num { font-size: 32px; font-weight: 700; color: #4f46e5; }
+.stat .label { font-size: 13px; color: #666; margin-top: 4px; }
+.bar { height: 8px; background: #e5e7eb; border-radius: 4px; margin-top: 6px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; background: #4f46e5; transition: width 0.3s; }
+.score-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+.score-row span:last-child { font-weight: 600; }
+.risk-low { background: #d1fae5; color: #065f46; }
+.risk-medium { background: #fef3c7; color: #92400e; }
+.risk-high { background: #fee2e2; color: #991b1b; }
+.risk-card { padding: 12px; border-radius: 8px; text-align: center; }
+.risk-card .level { font-size: 18px; font-weight: 700; }
+.risk-card .detail { font-size: 12px; margin-top: 4px; opacity: 0.8; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📚 学习监督机器人</h1>
+  <p>实时任务管理 / 完成审核 / 学习评分</p>
+</div>
+
+<div class="container">
+
+  <!-- 统计概览 -->
+  <div class="card">
+    <h2>📊 概览</h2>
+    <div class="grid" id="overview"></div>
+  </div>
+
+  <!-- 任务列表 -->
+  <div class="card">
+    <h2>📋 任务状态</h2>
+    <table id="task-table">
+      <thead><tr><th>任务</th><th>成员</th><th>状态</th><th>截止时间</th><th>提交内容</th><th>AI审核</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- 运行状态 -->
+  <div class="card">
+    <h2>📡 运行状态</h2>
+    <div class="grid" id="runtime"></div>
+  </div>
+
+  <!-- 风险概览 -->
+  <div class="card">
+    <h2>⚠️ 风险监控</h2>
+    <div class="grid" id="risks"></div>
+  </div>
+
+  <!-- 评分榜 -->
+  <div class="card">
+    <h2>🏆 学习评分</h2>
+    <div id="scores"></div>
+  </div>
+
+  <!-- 审核记录 -->
+  <div class="card">
+    <h2>🔍 最近审核记录</h2>
+    <table id="audit-table">
+      <thead><tr><th>成员</th><th>证据类型</th><th>内容</th><th>AI判断</th><th>理由</th><th>时间</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+// 数据获取
+async function load() {
+  // 统一从 /api/dashboard 获取所有数据
+  const data = await fetch('/api/dashboard').then(r => r.json());
+
+  const tasks = data.tasks || [];
+  const audits = data.audits || [];
+  const scores = data.scores || [];
+  const risks = data.risks || [];
+
+  // Runtime stats
+  try {
+    const rt = await fetch('/api/runtime').then(r => r.json());
+    const today = rt.today || {};
+    document.getElementById('runtime').innerHTML = `
+      <div class="stat"><div class="num">${rt.uptime || '?'}</div><div class="label">运行时长</div></div>
+      <div class="stat"><div class="num">${today.wx_received || 0}</div><div class="label">今日消息</div></div>
+      <div class="stat"><div class="num">${today.ai_checks || 0}</div><div class="label">AI审核</div></div>
+      <div class="stat"><div class="num">${today.tasks_created || 0}</div><div class="label">任务创建</div></div>
+      <div class="stat"><div class="num">${rt.health?.android_online ? '🟢' : '🔴'}</div><div class="label">Android</div></div>
+      <div class="stat"><div class="num">${rt.health?.wechat_online ? '🟢' : '🔴'}</div><div class="label">微信</div></div>
+      <div class="stat"><div class="num">${rt.health?.ai_online ? '🟢' : '🔴'}</div><div class="label">AI</div></div>
+    `;
+  } catch(e) {}
+
+  // 概览统计
+  let total = tasks.length, pending = 0, approved = 0, rejected = 0;
+  tasks.forEach(t => {
+    const s = t.assignee_status || t.status || '';
+    if (s === 'pending' || s === '未开始') pending++;
+    else if (s === 'approved' || s === '已完成') approved++;
+    else if (s === 'rejected') rejected++;
+    else if (s === 'submitted') pending++;
+  });
+
+  document.getElementById('overview').innerHTML = `
+    <div class="stat"><div class="num">${total}</div><div class="label">总任务数</div></div>
+    <div class="stat"><div class="num">${pending}</div><div class="label">待提交</div></div>
+    <div class="stat"><div class="num">${approved}</div><div class="label">已通过</div></div>
+    <div class="stat"><div class="num">${rejected}</div><div class="label">未通过</div></div>
+  `;
+
+  // 风险卡片
+  const risksDiv = document.getElementById('risks');
+  if (risks.length === 0) {
+    risksDiv.innerHTML = '<p style="color:#999">暂无风险评估数据</p>';
+  } else {
+    risks.forEach(r => {
+      const cls = 'risk-' + (r.risk_level || 'low');
+      const label = {low:'低风险', medium:'中风险', high:'高风险'}[r.risk_level] || '未知';
+      risksDiv.innerHTML += `
+        <div class="risk-card ${cls}">
+          <div class="level">${r.wx_name || r.member_name || '?'} - ${label}</div>
+          <div class="detail">${r.detail || ''} | 风险分: ${r.risk_score || 0}</div>
+        </div>`;
+    });
+  }
+
+  // 任务表格
+  const tbody = document.querySelector('#task-table tbody');
+  if (tasks.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:#999;text-align:center">暂无任务数据</td></tr>';
+  } else {
+    tbody.innerHTML = tasks.map(t => {
+      const status = t.assignee_status || t.status || '';
+      const tagClass = status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : status === 'submitted' ? 'submitted' : 'pending';
+      return `<tr>
+        <td>${t.title || ''}</td>
+        <td>${t.wx_name || ''}</td>
+        <td><span class="tag tag-${tagClass}">${status}</span></td>
+        <td>${(t.deadline || '').slice(0,16)}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(t.answer || '').slice(0,40)}</td>
+        <td style="max-width:150px;font-size:12px">${(t.ai_audit_reason || t.ai_result || '').slice(0,40)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // 审核记录表
+  const atbody = document.querySelector('#audit-table tbody');
+  if (audits.length === 0) {
+    atbody.innerHTML = '<tr><td colspan="6" style="color:#999;text-align:center">暂无审核记录</td></tr>';
+  } else {
+    atbody.innerHTML = audits.map(a => {
+      const result = a.ai_audit_result || '';
+      const tagClass = result === 'approved' ? 'approved' : result === 'rejected' ? 'rejected' : 'submitted';
+      return `<tr>
+        <td>${a.wx_name || ''}</td>
+        <td>${a.evidence_type || 'text'}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(a.text_content || '').slice(0,50)}</td>
+        <td><span class="tag tag-${tagClass}">${result || '待审核'}</span></td>
+        <td style="max-width:150px;font-size:12px">${(a.ai_audit_reason || '').slice(0,40)}</td>
+        <td>${(a.submitted_at || '').slice(0,16)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // 评分
+  const scoresDiv = document.getElementById('scores');
+  if (scores.length === 0) {
+    scoresDiv.innerHTML = '<p style="color:#999">暂无评分数据</p>';
+  } else {
+    scores.forEach(s => {
+      scoresDiv.innerHTML += `
+        <div style="margin-bottom:14px">
+          <strong>${s.member_name || s.name || '?'}</strong>
+          <span style="float:right;font-weight:700;color:#4f46e5">${s.overall_score || 0} 分</span>
+          <div style="display:flex;gap:20px;font-size:13px;color:#666;margin-top:4px">
+            <span>完成: ${s.completion_rate || 0}%</span>
+            <span>及时: ${s.timeliness_rate || 0}%</span>
+            <span>质量: ${s.quality_score || 0}%</span>
+            <span>连续: ${s.streak_days || 0}天</span>
+          </div>
+          <div style="font-size:12px;color:#888">${s.comment || ''}</div>
+          <div class="bar"><div class="bar-fill" style="width:${s.overall_score || 0}%"></div></div>
+        </div>`;
+    });
+  }
+}
+
+load();
+</script>
+</body>
+</html>

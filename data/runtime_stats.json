@@ -1,0 +1,25 @@
+{
+  "start_time": "2026-07-24T01:05:58.948517",
+  "restart_count": 0,
+  "daily": {
+    "2026-07-24": {
+      "wx_received": 0,
+      "wx_processed": 0,
+      "wx_sent": 0,
+      "wx_failed": 0,
+      "ai_checks": 3,
+      "ai_approved": 1,
+      "ai_rejected": 0,
+      "ai_need_more": 2,
+      "tasks_created": 8,
+      "spot_checks": 0,
+      "reminders_sent": 0
+    }
+  },
+  "health": {
+    "android_online": false,
+    "wechat_online": false,
+    "ai_online": false,
+    "last_health_check": null
+  }
+}

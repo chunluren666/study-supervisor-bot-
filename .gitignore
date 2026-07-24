@@ -1,0 +1,37 @@
+# Secrets
+.env
+*.token
+*_token*
+*session*.json
+
+# Database & Data
+data/
+backups/
+
+# Logs
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+venv311/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+bridge_in.txt
+bridge_out.txt
+*.old
+test_*.pyc
+
+# Node
+wechat_gateway/node_service/node_modules/

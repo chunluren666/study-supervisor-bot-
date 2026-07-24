@@ -1,0 +1,16 @@
+{
+  "name": "wechat-gateway",
+  "version": "1.0.0",
+  "description": "WeChaty + PadLocal gateway for study supervisor bot",
+  "main": "api.js",
+  "scripts": {
+    "start": "node api.js",
+    "dev": "node --watch api.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "wechaty": "^1.20.0",
+    "wechaty-puppet-padlocal": "^1.20.0",
+    "dotenv": "^16.4.0"
+  }
+}
