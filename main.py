@@ -106,9 +106,10 @@ def create_web_app():
     @app.get("/wecom/callback")
     def wecom_verify(msg_signature: str = "", timestamp: str = "",
                      nonce: str = "", echostr: str = ""):
-        """企业微信 URL 验证"""
+        """企业微信 URL 验证 — 必须返回纯文本"""
+        from fastapi.responses import PlainTextResponse
         if not all([msg_signature, timestamp, nonce, echostr]):
-            return "missing params"
+            return PlainTextResponse("missing params")
         from wechat_gateway.wecom_adapter.wecom_crypto import WXBizMsgCrypt
         from wechat_gateway.wecom_adapter.config import (
             WECOM_TOKEN, WECOM_ENCODING_AES_KEY, WECOM_CORP_ID,
@@ -117,10 +118,10 @@ def create_web_app():
             wxcpt = WXBizMsgCrypt(WECOM_TOKEN or "test", WECOM_ENCODING_AES_KEY or "x"*43, WECOM_CORP_ID or "ww")
             ret, plain = wxcpt.verify_url(msg_signature, timestamp, nonce, echostr)
             if ret == 0:
-                return plain
+                return PlainTextResponse(plain)
         except Exception:
             pass
-        return echostr  # fallback: 直接返回
+        return PlainTextResponse("")
 
     @app.post("/wecom/callback")
     async def wecom_receive(request: __import__('fastapi').Request):
