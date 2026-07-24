@@ -172,6 +172,8 @@ def create_web_app():
                 pass
 
         if not content:
+            # 记录未识别的请求用于调试
+            logger.warning(f"Unrecognized callback body (first 200 chars): {body_str[:200]}")
             return "ok"
 
         if msg_id and is_wecom_duplicate(str(msg_id)):
