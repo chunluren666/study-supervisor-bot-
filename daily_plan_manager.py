@@ -10,14 +10,16 @@ log = logging.getLogger("daily_plan")
 
 # ── 计划解析 ──
 
-PLAN_PARSE_PROMPT = """你是一个考研监督老师。学生提交了今日学习计划，请解析为结构化任务。
+PLAN_PARSE_PROMPT = """学生提交了今日计划。提取每项为独立任务，学科从上下文推断。
+
+学科分类: 数学/英语/政治/专业课
+如"做880"→学科=数学,内容=880习题
+如"背单词"→学科=英语,内容=单词
+如"看新课"→学科=数学(默认)
 
 学生计划: {message}
 
-提取每个任务:
-{"tasks":[{"subject":"学科","content":"内容","target_count":"数量","estimated_minutes":分钟,"priority":"high|medium|low"}],
- "total_estimated_hours":总估计小时}
-
+{"tasks":[{"subject":"","content":"","target_count":"","estimated_minutes":0,"priority":"high|medium|low"}], "total_estimated_hours":0}
 只返回JSON。"""
 
 
@@ -117,21 +119,25 @@ def get_daily_summary(user_id: str) -> str:
 # ── 计划回复 ──
 
 def format_plan_reply(plan_data: dict) -> str:
-    """格式化计划确认回复"""
+    """计划确认回复 — 老师语气"""
     tasks = plan_data.get("tasks", [])
-    lines = [" 今日计划已记录:", ""]
+    if not tasks:
+        return "没太理解你的计划，能说具体点吗？比如"数学做30道真题"这样。"
+
+    lines = ["收到，今天的任务已记下：", ""]
     for i, t in enumerate(tasks, 1):
         subj = t.get("subject", "")
         content = t.get("content", "")
         count = t.get("target_count", "")
         mins = t.get("estimated_minutes", 0)
-        prio = {"high": "", "medium": "", "low": ""}.get(t.get("priority", ""), "")
-        lines.append(f"{i}. {prio} {subj}: {content}")
-        if count: lines[-1] += f" ({count})"
-        if mins: lines[-1] += f" [{mins}min]"
+        emoji = {"数学":"", "英语":"", "政治":"", "专业课":""}.get(subj, "")
+        line = f"  {i}. {emoji}{subj}: {content}"
+        if count: line += f"（{count}）"
+        lines.append(line)
 
-    lines.append(f"\n共 {len(tasks)} 项, 估计 {plan_data.get('total_hours', 0)}h")
-    lines.append("\n完成后请汇报: 完成 [序号] [具体结果]")
+    total = plan_data.get("total_hours", 0)
+    lines.append(f"\n共 {len(tasks)} 项，预计 {total}h。加油！")
+    lines.append("每完成一项来汇报：完成 [序号] 并说明具体结果。")
     return "\n".join(lines)
 
 
