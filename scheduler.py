@@ -23,12 +23,13 @@ from config import (
 class Scheduler:
     """轻量级调度器，在线程中运行，不依赖外部服务"""
 
-    def __init__(self, on_send_message):
+    def __init__(self, on_send_message, on_group_broadcast=None):
         """
-        on_send_message: 回调函数，用于发送消息到微信群
-                        签名为 on_send_message(text: str) -> None
+        on_send_message: 回调函数，用于发送私聊消息
+        on_group_broadcast: 群广播回调 (可选)
         """
         self.on_send = on_send_message
+        self.on_broadcast = on_group_broadcast
         self.running = False
         self.thread = None
         self._last_reminder_check = None
@@ -97,7 +98,7 @@ class Scheduler:
     # ── 内部方法 ──
 
     def _check_reminders(self):
-        """检查并发送提醒 —— 高风险成员提醒频率更高"""
+        """检查并发送提醒"""
         reminders = generate_reminders()
         if not reminders:
             return
@@ -107,11 +108,9 @@ class Scheduler:
         for task_id, member_id, message in reminders:
             add_reminder(task_id, member_id, "auto_reminder", message)
 
-            # 根据风险调整提醒内容
             if member_id:
                 risk = get_latest_risk(member_id)
                 risk_level = risk.get("risk_level", "low") if risk else "low"
-                strategy = get_reminder_strategy(risk_level)
 
                 if risk_level == RISK_HIGH:
                     message = f"[HIGH RISK] {message}"
@@ -119,6 +118,9 @@ class Scheduler:
                     message = f"[!] {message}"
 
             self.on_send(message)
+            # 群广播提醒
+            if self.on_broadcast:
+                self.on_broadcast(f" 提醒通知\n{message}")
             print(f"[Scheduler] 提醒: {message[:60]}")
 
     def _do_spot_checks(self):
@@ -151,6 +153,8 @@ class Scheduler:
         report = generate_stats_report()
         if report and report.strip():
             self.on_send(report)
+            if self.on_broadcast:
+                self.on_broadcast(f"## 学习统计\n{report}")
             print(f"[Scheduler] 统计报告已发送")
 
     def _do_backup(self):

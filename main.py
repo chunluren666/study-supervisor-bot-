@@ -26,6 +26,7 @@ from database import init_db
 from task_manager import process_message, generate_reminders, generate_stats_report
 from scheduler import Scheduler
 from runtime_stats import msg_received, msg_sent, msg_failed, health_update, get_summary, get_weekly_report
+from wechat_gateway.wecom_group_bot.group_bot_adapter import GroupBotAdapter
 from wechat_gateway.python_adapter.wechat_adapter import (
     create_adapter, MockAdapter, BaseWechatAdapter,
 )
@@ -413,8 +414,17 @@ def main():
         return
 
     # ── 调度器 ──
-    scheduler = Scheduler(on_send_message=send_reply)
+    group_bot = GroupBotAdapter()
+    def group_broadcast(text: str):
+        if group_bot.online:
+            group_bot.send(text)
+
+    scheduler = Scheduler(on_send_message=send_reply, on_group_broadcast=group_broadcast)
     scheduler.start()
+    if group_bot.online:
+        logger.info("群机器人已连接")
+    else:
+        logger.info("群机器人未配置 (提醒仅在私聊发送)")
 
     print(f"\n轮询间隔: {WECHAT_POLL_INTERVAL}s")
     print("按 Ctrl+C 停止\n")
