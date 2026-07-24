@@ -15,7 +15,7 @@ WECOM_CORP_ID = os.environ.get("WECOM_CORP_ID", "")
 WECOM_SECRET = os.environ.get("WECOM_SECRET", "")
 WECOM_AGENT_ID = int(os.environ.get("WECOM_AGENT_ID", "0") or "0")
 WECOM_TOKEN = os.environ.get("WECOM_TOKEN", "")        # 回调验证
-WECOM_ENCODING_AES_KEY = os.environ.get("WECOM_AES_KEY", "")
+WECOM_ENCODING_AES_KEY = os.environ.get("WECOM_AES_KEY", "") or os.environ.get("WECOM_ENCODING_AES_KEY", "")
 
 # 企业微信API
 WECOM_API_BASE = "https://qyapi.weixin.qq.com/cgi-bin"
