@@ -187,17 +187,17 @@ def create_web_app():
 
         try:
             reply = process_message(user_id, content) or ""
-            # API挂了时的关键词回退
+            # AI挂了时的严格老师关键词回退
             if not reply:
-                kw = content.lower()
+                kw = content
                 if any(w in kw for w in ['完成','做了','做完','搞定']):
-                    reply = f"@{user_id} 收到完成汇报，已记录。如有具体成果请补充说明。"
+                    reply = f"[老师] 请具体说明:\n1. 学科?\n2. 内容(哪本书/哪套题)?\n3. 数量?\n4. 时间?\n5. 正确率/错题整理?"
                 elif any(w in kw for w in ['任务','作业','学习','提交','截止']):
-                    reply = f"@{user_id} 收到任务相关消息。请老师发布具体任务。"
+                    reply = f"[老师] 收到任务相关消息。请老师明确发布: 内容/截止时间/负责人。"
                 elif any(w in kw for w in ['你好','在吗','hi','hello']):
-                    reply = f"你好 @{user_id}！学习监督机器人在线。私聊我汇报学习进度，我会记录、审核、提醒。"
+                    reply = f"你好。我是考研监督老师。请直接汇报学习进度，格式:\n学科/内容/数量/时间/结果"
                 else:
-                    reply = f"@{user_id} 收到。" + user_id + "，请说明学习任务或完成情况。\n命令: /帮助"
+                    reply = f"请用具体的学习汇报格式:\n1.学科 2.内容 3.数量 4.时间 5.结果"
 
             try:
                 if adapter and hasattr(adapter, 'send_message'):
