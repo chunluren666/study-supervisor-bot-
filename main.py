@@ -187,15 +187,13 @@ def create_web_app():
 
         try:
             reply = process_message(user_id, content) or ""
-            logger.info(f"Reply: {reply[:80] if reply else '(empty)'}")
             if reply:
-                # 有chat_id=群聊, 无chat_id=私聊, 回复给发送者
-                if adapter and hasattr(adapter, 'send_message'):
-                    if chat_id:
-                        adapter.send_message(reply, room=chat_id)
-                    else:
-                        adapter.api.send_text(reply, to_user=user_id)
-                msg_sent()
+                try:
+                    if adapter and hasattr(adapter, 'send_message'):
+                        adapter.send_message(reply, room="")
+                    msg_sent()
+                except Exception as se:
+                    logger.error(f"Send error: {se}")
                 return _json.dumps({"msgtype": "text", "text": {"content": reply}}, ensure_ascii=False)
             else:
                 msg_failed()
