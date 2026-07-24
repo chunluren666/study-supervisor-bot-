@@ -185,6 +185,13 @@ def create_web_app():
         msg_received()
         logger.info(f"[Callback] {user_id}: {content[:100]}")
 
+        # 对话学习: 记录用户偏好
+        from chat_learner import get_learned_context
+        ctx = get_learned_context(user_id)
+        if ctx.get("mentioned_subjects"):
+            # 注入到回复上下文(后续AI用)
+            pass
+
         try:
             # ── 秒回通道: 计划/打招呼/敷衍秒回 ──
             from daily_plan_manager import is_daily_plan_message, create_daily_plan, format_plan_reply

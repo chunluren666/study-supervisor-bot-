@@ -40,6 +40,7 @@ class Scheduler:
         self._last_plan_morning = None
         self._last_plan_afternoon = None
         self._last_plan_evening = None
+        self._last_chat_analysis = None
 
     def start(self):
         """启动调度器（后台线程）"""
@@ -62,7 +63,16 @@ class Scheduler:
             today = now.strftime("%Y-%m-%d")
             current_time = now.strftime("%H:%M")
 
-            # ── 0. 每日计划提醒 ──
+            # ── 0. 对话学习分析(23:00) ──
+            if current_time == "23:00" and self._last_chat_analysis != today:
+                self._last_chat_analysis = today
+                try:
+                    from chat_learner import generate_daily_summary
+                    summary = generate_daily_summary()
+                    self.on_send(summary)
+                except Exception: pass
+
+            # ── 1. 每日计划提醒 ──
             if current_time == "08:00" and self._last_plan_morning != today:
                 self._last_plan_morning = today
                 self._plan_reminder("morning")
