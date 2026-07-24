@@ -126,7 +126,7 @@ def create_web_app():
 
     @app.post("/wecom/callback")
     async def wecom_receive(request: __import__('fastapi').Request):
-        """企业微信消息回调"""
+        """企业微信消息回调 (自建应用 + 群机器人)"""
         from wechat_gateway.wecom_adapter.wecom_crypto import WXBizMsgCrypt, parse_wecom_xml
         from wechat_gateway.wecom_adapter.config import (
             WECOM_TOKEN, WECOM_ENCODING_AES_KEY, WECOM_CORP_ID,
@@ -159,24 +159,25 @@ def create_web_app():
 
             log_wecom_message(msg_id, user_id, content, str(body), timestamp)
 
-            # 直接处理消息
-            if msg_type == "text" and content:
-                from runtime_stats import msg_received, msg_sent, msg_failed
-                msg_received()
-                logger.info(f"[WeCom] {user_id}: {content[:100]}")
-                try:
-                    reply = process_message(user_id, content)
-                    if reply:
-                        if adapter and hasattr(adapter, 'send_message'):
-                            # 根据chat_id决定发群还是发个人
-                            if chat_id:
-                                adapter.send_message(reply, room=chat_id)
-                            else:
-                                adapter.send_message(reply)
-                        msg_sent()
-                except Exception as e2:
-                    msg_failed()
-                    logger.error(f"处理失败: {e2}")
+            from runtime_stats import msg_received, msg_sent, msg_failed
+            msg_received()
+            logger.info(f"[WeCom] {user_id}: {content[:100]}")
+
+            try:
+                reply = process_message(user_id, content)
+
+                # 群机器人模式: 回复通过API发送
+                if reply and adapter and hasattr(adapter, 'send_message'):
+                    adapter.send_message(reply, room=chat_id or "")
+                    msg_sent()
+
+                # 群机器人回调模式: 在HTTP响应中直接返回回复
+                if reply:
+                    return reply
+
+            except Exception as e2:
+                msg_failed()
+                logger.error(f"处理失败: {e2}")
 
         except Exception as e:
             logger.error(f"WeCom callback error: {e}")
