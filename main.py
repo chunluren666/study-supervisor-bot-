@@ -186,18 +186,18 @@ def create_web_app():
         logger.info(f"[Callback] {user_id}: {content[:100]}")
 
         try:
-            reply = process_message(user_id, content)
+            reply = process_message(user_id, content) or ""
+            logger.info(f"Reply: {reply[:80] if reply else '(empty)'}")
             if reply:
-                if adapter and hasattr(adapter, 'send_message'):
-                    adapter.send_message(reply, room=chat_id or "")
                 msg_sent()
-                # 群机器人: 返回JSON格式回复
                 return _json.dumps({"msgtype": "text", "text": {"content": reply}}, ensure_ascii=False)
+            else:
+                msg_failed()
+                return _json.dumps({"msgtype": "text", "text": {"content": "收到"}}, ensure_ascii=False)
         except Exception as e2:
             msg_failed()
             logger.error(f"处理失败: {e2}")
-
-        return "ok"
+            return _json.dumps({"msgtype": "text", "text": {"content": f"出错: {str(e2)[:50]}"}}, ensure_ascii=False)
 
     @app.get("/wecom/refresh")
     def wecom_refresh():
