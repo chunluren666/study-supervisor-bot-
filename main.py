@@ -158,15 +158,20 @@ def create_web_app():
 
             log_wecom_message(msg_id, user_id, content, str(body), timestamp)
 
-            # 注入适配器消息队列
-            if adapter and hasattr(adapter, 'on_webhook_message'):
-                adapter.on_webhook_message({
-                    "MsgType": msg_type,
-                    "From": {"UserId": user_id},
-                    "Text": {"Content": content},
-                    "ChatId": chat_id,
-                    "MsgId": msg_id,
-                })
+            # 直接处理消息（不经过队列）
+            if msg_type == "text" and content:
+                from runtime_stats import msg_received, msg_sent, msg_failed
+                msg_received()
+                logger.info(f"[WeCom] {user_id}: {content[:100]}")
+                try:
+                    reply = process_message(user_id, content)
+                    if reply:
+                        if adapter and hasattr(adapter, 'send_message'):
+                            adapter.send_message(reply)
+                        msg_sent()
+                except Exception as e2:
+                    msg_failed()
+                    logger.error(f"处理失败: {e2}")
 
         except Exception as e:
             logger.error(f"WeCom callback error: {e}")
