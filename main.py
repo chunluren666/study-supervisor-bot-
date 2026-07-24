@@ -187,14 +187,25 @@ def create_web_app():
 
         try:
             reply = process_message(user_id, content) or ""
-            if reply:
-                try:
-                    if adapter and hasattr(adapter, 'send_message'):
-                        adapter.send_message(reply, room="")
-                    msg_sent()
-                except Exception as se:
-                    logger.error(f"Send error: {se}")
-                return _json.dumps({"msgtype": "text", "text": {"content": reply}}, ensure_ascii=False)
+            # API挂了时的关键词回退
+            if not reply:
+                kw = content.lower()
+                if any(w in kw for w in ['完成','做了','做完','搞定']):
+                    reply = f"@{user_id} 收到完成汇报，已记录。如有具体成果请补充说明。"
+                elif any(w in kw for w in ['任务','作业','学习','提交','截止']):
+                    reply = f"@{user_id} 收到任务相关消息。请老师发布具体任务。"
+                elif any(w in kw for w in ['你好','在吗','hi','hello']):
+                    reply = f"你好 @{user_id}！学习监督机器人在线。私聊我汇报学习进度，我会记录、审核、提醒。"
+                else:
+                    reply = f"@{user_id} 收到。" + user_id + "，请说明学习任务或完成情况。\n命令: /帮助"
+
+            try:
+                if adapter and hasattr(adapter, 'send_message'):
+                    adapter.send_message(reply, room="")
+                msg_sent()
+            except Exception as se:
+                logger.error(f"Send error: {se}")
+            return _json.dumps({"msgtype": "text", "text": {"content": reply}}, ensure_ascii=False)
             else:
                 msg_failed()
                 return _json.dumps({"msgtype": "text", "text": {"content": "收到"}}, ensure_ascii=False)
