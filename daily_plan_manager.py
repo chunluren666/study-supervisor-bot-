@@ -122,7 +122,7 @@ def format_plan_reply(plan_data: dict) -> str:
     """计划确认回复 — 老师语气"""
     tasks = plan_data.get("tasks", [])
     if not tasks:
-        return "没太理解你的计划，能说具体点吗？比如"数学做30道真题"这样。"
+        return "没太理解你的计划，能说具体点吗？比如'数学做30道真题'这样。"
 
     lines = ["收到，今天的任务已记下：", ""]
     for i, t in enumerate(tasks, 1):
