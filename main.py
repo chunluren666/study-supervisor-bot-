@@ -191,8 +191,8 @@ def create_web_app():
                 if adapter and hasattr(adapter, 'send_message'):
                     adapter.send_message(reply, room=chat_id or "")
                 msg_sent()
-                # 群机器人需要在HTTP body中返回回复
-                return reply
+                # 群机器人: 返回JSON格式回复
+                return _json.dumps({"msgtype": "text", "text": {"content": reply}}, ensure_ascii=False)
         except Exception as e2:
             msg_failed()
             logger.error(f"处理失败: {e2}")
