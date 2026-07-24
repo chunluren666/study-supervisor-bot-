@@ -11,7 +11,6 @@ COPY *.py .
 COPY wechat_gateway/ wechat_gateway/
 COPY templates/ templates/
 COPY tests/ tests/
-COPY .env .env
 
 # 创建数据目录
 RUN mkdir -p data logs backups
