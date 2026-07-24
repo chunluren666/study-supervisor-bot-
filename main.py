@@ -173,6 +173,14 @@ def create_web_app():
 
         return "ok"
 
+    @app.get("/wecom/refresh")
+    def wecom_refresh():
+        """强制刷新 WeChat Token"""
+        from wechat_gateway.wecom_adapter.wecom_api import WeComAPI
+        api = WeComAPI()
+        token = api.get_token(force=True)
+        return {"token_ok": bool(token), "token_preview": token[:15] + "..." if token else "FAILED"}
+
     @app.get("/myip")
     def myip():
         """诊断: 显示本机出站 IP"""
