@@ -173,6 +173,16 @@ def create_web_app():
 
         return "ok"
 
+    @app.get("/myip")
+    def myip():
+        """诊断: 显示本机出站 IP"""
+        import urllib.request
+        try:
+            ip = urllib.request.urlopen("https://api.ipify.org", timeout=5).read().decode()
+        except:
+            ip = "unknown"
+        return {"outbound_ip": ip}
+
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard():
         tpl = BASE_DIR / "templates" / "dashboard.html"
