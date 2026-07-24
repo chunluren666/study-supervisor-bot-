@@ -126,61 +126,74 @@ def create_web_app():
 
     @app.post("/wecom/callback")
     async def wecom_receive(request: __import__('fastapi').Request):
-        """企业微信消息回调 (自建应用 + 群机器人)"""
+        """企业微信消息回调 (自建应用XML + 群机器人JSON)"""
         from wechat_gateway.wecom_adapter.wecom_crypto import WXBizMsgCrypt, parse_wecom_xml
         from wechat_gateway.wecom_adapter.config import (
             WECOM_TOKEN, WECOM_ENCODING_AES_KEY, WECOM_CORP_ID,
         )
         from database import is_wecom_duplicate, log_wecom_message
+        import json as _json
 
         msg_signature = request.query_params.get("msg_signature", "")
         timestamp = request.query_params.get("timestamp", "")
         nonce = request.query_params.get("nonce", "")
         body = await request.body()
+        body_str = body.decode()
+
+        # 尝试解析: 明文JSON (群机器人) 或加密XML (自建应用)
+        user_id = content = chat_id = msg_id = ""
+        msg_type = "text"
+
+        # 格式1: 群机器人明文JSON
+        try:
+            if body_str.strip().startswith("{"):
+                j = _json.loads(body_str)
+                user_id = j.get("from", {}).get("userid", "")
+                content = (j.get("text", {}).get("content", "") or "").strip()
+                msg_id = j.get("msgid", "")
+                chat_id = j.get("chatid", "")
+                logger.info(f"[GroupBot] {user_id}: {content[:100]}")
+        except Exception:
+            pass
+
+        # 格式2: 自建应用加密XML
+        if not content and msg_signature:
+            try:
+                wxcpt = WXBizMsgCrypt(WECOM_TOKEN or "test", WECOM_ENCODING_AES_KEY or "x"*43, WECOM_CORP_ID or "ww")
+                ret, plain = wxcpt.decrypt_msg(msg_signature, timestamp, nonce, body_str)
+                if ret == 0:
+                    data = parse_wecom_xml(plain)
+                    msg_id = data.get("MsgId", "")
+                    msg_type = data.get("MsgType", "")
+                    user_id = data.get("FromUserName", "")
+                    content = data.get("Content", "").strip()
+                    chat_id = data.get("ChatId", "")
+            except Exception:
+                pass
+
+        if not content:
+            return "ok"
+
+        if msg_id and is_wecom_duplicate(str(msg_id)):
+            return "ok"
+        if msg_id:
+            log_wecom_message(str(msg_id), user_id, content, body_str, timestamp)
+
+        from runtime_stats import msg_received, msg_sent, msg_failed
+        msg_received()
+        logger.info(f"[Callback] {user_id}: {content[:100]}")
 
         try:
-            wxcpt = WXBizMsgCrypt(WECOM_TOKEN or "test", WECOM_ENCODING_AES_KEY or "x"*43, WECOM_CORP_ID or "ww")
-            ret, plain = wxcpt.decrypt_msg(msg_signature, timestamp, nonce, body.decode())
-            if ret != 0:
-                return "decrypt failed"
-
-            data = parse_wecom_xml(plain)
-            msg_id = data.get("MsgId", "")
-            msg_type = data.get("MsgType", "")
-            user_id = data.get("FromUserName", "")
-            content = data.get("Content", "").strip()
-            chat_id = data.get("ChatId", "")
-
-            if msg_type != "text" or not content:
-                return "ok"
-
-            if is_wecom_duplicate(msg_id):
-                return "ok"
-
-            log_wecom_message(msg_id, user_id, content, str(body), timestamp)
-
-            from runtime_stats import msg_received, msg_sent, msg_failed
-            msg_received()
-            logger.info(f"[WeCom] {user_id}: {content[:100]}")
-
-            try:
-                reply = process_message(user_id, content)
-
-                # 群机器人模式: 回复通过API发送
-                if reply and adapter and hasattr(adapter, 'send_message'):
+            reply = process_message(user_id, content)
+            if reply:
+                if adapter and hasattr(adapter, 'send_message'):
                     adapter.send_message(reply, room=chat_id or "")
-                    msg_sent()
-
-                # 群机器人回调模式: 在HTTP响应中直接返回回复
-                if reply:
-                    return reply
-
-            except Exception as e2:
-                msg_failed()
-                logger.error(f"处理失败: {e2}")
-
-        except Exception as e:
-            logger.error(f"WeCom callback error: {e}")
+                msg_sent()
+                # 群机器人需要在HTTP body中返回回复
+                return reply
+        except Exception as e2:
+            msg_failed()
+            logger.error(f"处理失败: {e2}")
 
         return "ok"
 
