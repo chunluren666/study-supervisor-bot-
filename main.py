@@ -158,7 +158,7 @@ def create_web_app():
 
             log_wecom_message(msg_id, user_id, content, str(body), timestamp)
 
-            # 直接处理消息（不经过队列）
+            # 直接处理消息
             if msg_type == "text" and content:
                 from runtime_stats import msg_received, msg_sent, msg_failed
                 msg_received()
@@ -167,7 +167,11 @@ def create_web_app():
                     reply = process_message(user_id, content)
                     if reply:
                         if adapter and hasattr(adapter, 'send_message'):
-                            adapter.send_message(reply)
+                            # 根据chat_id决定发群还是发个人
+                            if chat_id:
+                                adapter.send_message(reply, room=chat_id)
+                            else:
+                                adapter.send_message(reply)
                         msg_sent()
                 except Exception as e2:
                     msg_failed()

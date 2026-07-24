@@ -77,11 +77,16 @@ class WeComAdapter:
         return None
 
     def send_message(self, text: str, room: str = "") -> bool:
-        """发送消息到企业微信群"""
-        result = self.api.send_text(text, chat_id=room or self.room)
+        """发送消息。room有值→群聊; room空→@all"""
+        if room:
+            result = self.api.send_text(text, chat_id=room)
+        else:
+            result = self.api.send_text(text, to_user="@all")
         ok = result.get("errcode") == 0
         if ok:
             self.logger.info(f"已发送: {text[:60]}")
+        else:
+            self.logger.error(f"发送失败: {result}")
         return ok
 
     def get_status(self) -> dict:
