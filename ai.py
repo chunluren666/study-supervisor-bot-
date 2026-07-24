@@ -12,7 +12,7 @@ def _call_deepseek(system_prompt: str, user_message: str,
     if not DEEPSEEK_API_KEY:
         return _fallback_parse(user_message)
 
-    MAX_RETRIES, RETRY_DELAY = 3, 2
+    MAX_RETRIES, RETRY_DELAY = 1, 1  # 快速失败, fallback秒回
     for attempt in range(MAX_RETRIES):
         try:
             body = json.dumps({

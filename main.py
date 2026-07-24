@@ -186,7 +186,21 @@ def create_web_app():
         logger.info(f"[Callback] {user_id}: {content[:100]}")
 
         try:
-            reply = process_message(user_id, content) or ""
+            # ── 快速响应: 秒回, 不等AI ──
+            from daily_plan_manager import is_daily_plan_message, create_daily_plan, format_plan_reply
+            fast_reply = ""
+            if is_daily_plan_message(content):
+                plan = create_daily_plan(user_id, content)
+                fast_reply = format_plan_reply(plan)
+            elif any(kw in content for kw in ['你好','在吗','hi','hello']):
+                fast_reply = "你好。我是考研监督老师。请直接提交计划或汇报进度。"
+            elif content.strip() in ['完成','做了','做完了','搞定','好了']:
+                fast_reply = "这不是合格的学习汇报。请说明: 1.学科 2.内容 3.数量 4.时间 5.结果"
+
+            if fast_reply:
+                reply = fast_reply
+            else:
+                reply = process_message(user_id, content) or ""
             # AI挂了时的严格老师关键词回退
             if not reply:
                 kw = content
