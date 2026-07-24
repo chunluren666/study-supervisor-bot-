@@ -17,6 +17,14 @@ from ai import parse_task_message, check_completion, evaluate_spot_check
 # ── 消息路由 ──
 
 def process_message(sender: str, content: str, is_group: bool = True) -> str:
+    # ── 每日计划检测 ──
+    from daily_plan_manager import is_daily_plan_message, create_daily_plan, format_plan_reply
+    if is_daily_plan_message(content):
+        try:
+            plan = create_daily_plan(sender, content)
+            return format_plan_reply(plan)
+        except Exception as e:
+            pass  # fall through to normal processing
     """
     处理一条微信群消息，返回机器人应回复的内容。
     这是核心入口函数，所有消息都经过此路由。

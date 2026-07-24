@@ -37,6 +37,9 @@ class Scheduler:
         self._last_stats_report = None
         self._last_backup = None
         self._last_rotate = None
+        self._last_plan_morning = None
+        self._last_plan_afternoon = None
+        self._last_plan_evening = None
 
     def start(self):
         """启动调度器（后台线程）"""
@@ -59,7 +62,18 @@ class Scheduler:
             today = now.strftime("%Y-%m-%d")
             current_time = now.strftime("%H:%M")
 
-            # ── 0. 每日备份(凌晨3点) ──
+            # ── 0. 每日计划提醒 ──
+            if current_time == "08:00" and self._last_plan_morning != today:
+                self._last_plan_morning = today
+                self._plan_reminder("morning")
+            if current_time == "14:00" and self._last_plan_afternoon != today:
+                self._last_plan_afternoon = today
+                self._plan_reminder("afternoon")
+            if current_time == "21:00" and self._last_plan_evening != today:
+                self._last_plan_evening = today
+                self._plan_reminder("evening")
+
+            # ── 1. 每日备份(凌晨3点) ──
             if current_time == "03:00" and self._last_backup != today:
                 self._last_backup = today
                 self._do_backup()
@@ -164,6 +178,18 @@ class Scheduler:
             print(f"[Scheduler] 备份: {path}")
         except Exception as e:
             print(f"[Scheduler] 备份失败: {e}")
+
+    def _plan_reminder(self, phase: str):
+        """每日计划提醒: morning/afternoon/evening"""
+        msgs = {
+            "morning": " 早上好！请提交今日学习计划。格式:\n今天要完成: [学科] [内容] [数量]",
+            "afternoon": " 下午好！请检查进度:\n1. 上午完成了什么?\n2. 下午计划是什么?\n3. 遇到什么困难?",
+            "evening": " 晚上好！请提交今日学习总结:\n完成的每项任务 + 未完成的原因",
+        }
+        msg = msgs.get(phase, "")
+        if msg:
+            self.on_send(msg)
+            print(f"[Plan] {phase} 提醒")
 
     def _do_log_rotate(self):
         try:

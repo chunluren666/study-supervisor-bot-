@@ -169,6 +169,37 @@ def init_db():
             FOREIGN KEY (member_id) REFERENCES members(id)
         );
 
+        -- 每日计划
+        CREATE TABLE IF NOT EXISTS daily_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            raw_message TEXT,
+            total_hours REAL DEFAULT 0,
+            morning_review_at TIMESTAMP,
+            afternoon_remind_at TIMESTAMP,
+            evening_check_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- 每日任务明细
+        CREATE TABLE IF NOT EXISTS daily_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
+            subject TEXT,
+            content TEXT,
+            target_count TEXT,
+            estimated_minutes INTEGER DEFAULT 0,
+            priority TEXT DEFAULT 'medium',
+            status TEXT DEFAULT 'pending',
+            actual_count TEXT,
+            actual_minutes INTEGER DEFAULT 0,
+            note TEXT,
+            completed_at TIMESTAMP,
+            FOREIGN KEY (plan_id) REFERENCES daily_plans(id)
+        );
+
         -- 企业微信消息日志（去重）
         CREATE TABLE IF NOT EXISTS wecom_message_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
