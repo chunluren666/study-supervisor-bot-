@@ -206,9 +206,6 @@ def create_web_app():
             except Exception as se:
                 logger.error(f"Send error: {se}")
             return _json.dumps({"msgtype": "text", "text": {"content": reply}}, ensure_ascii=False)
-            else:
-                msg_failed()
-                return _json.dumps({"msgtype": "text", "text": {"content": "收到"}}, ensure_ascii=False)
         except Exception as e2:
             msg_failed()
             logger.error(f"处理失败: {e2}")
