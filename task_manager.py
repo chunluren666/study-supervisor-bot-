@@ -289,8 +289,7 @@ def _handle_general_chat(sender: str, content: str) -> str:
     # API不可用时返回空（不回复）
     if not __import__('config').DEEPSEEK_API_KEY:
         return ""
-    reply = _call_deepseek("你是微信群学习监督机器人小督，回复简短友好。", prompt,
-                           temperature=0.7, fallback="")
+    reply = _call_deepseek("你是微信群学习监督机器人小督，回复简短友好。", prompt, temperature=0.7)
     # 如果回退匹配返回了非JSON，说明API失败
     if reply and reply.startswith("{"):
         return ""  # 回退匹配的JSON，不该回复
