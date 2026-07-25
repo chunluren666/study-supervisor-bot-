@@ -223,30 +223,35 @@ def create_web_app():
         from runtime_stats import msg_received
         msg_received()
         logger.info(f"[Callback] {user_id}: {content[:100]}")
-        # 智能回复: 提问→AI回答, 计划→解析, 完成→审核
+        # ── 用户识别 + 意图路由 ──
+        from database import get_db
+        db = get_db()
+        profile = db.execute("SELECT * FROM user_profiles WHERE wecom_userid=?", (user_id,)).fetchone()
+        db.close()
+        username = profile["username"] if profile else user_id
+
         import re
         c = content.strip()
 
-        # 提问类 → 调用AI回答
-        is_question = any(kw in c for kw in ["什么","怎么","如何","为什么","哪个","哪本",
-            "推荐","建议","方法","技巧","规划","安排","多少","怎样","?","？",
-            "不会","不懂","帮忙","解释","说明","讲一下","介绍一下"])
+        # 意图分类
+        from ai import classify_intent
+        intent = classify_intent(c)
 
-        if is_question:
-            reply = ai_answer(user_id, c)
-        elif any(kw in c for kw in ["今天","计划","安排"]) and len(c) > 5:
-            reply = f"收到计划。逐项跟进，完成后汇报。"
-        elif len(c) < 4:
-            reply = "请说具体内容。"
-        elif any(kw in c for kw in ["你好","在吗"]):
-            reply = "在。直接说计划、进度或提问吧。"
-        elif c in ["完成","做了","做完了","搞定","好了","OK","ok"]:
-            reply = "不够具体。科目?内容?数量?时间?结果?"
-        elif any(kw in c for kw in ["完成","做了"]) and len(c) > 10:
-            nums = re.findall(r'\d+', c)
-            reply = f"收到完成汇报。继续加油!"
+        if intent == "task":
+            from daily_plan_manager import is_daily_plan_message, create_daily_plan, format_plan_reply
+            if is_daily_plan_message(c):
+                plan = create_daily_plan(user_id, c)
+                reply = f"【{username}】\n{format_plan_reply(plan)}"
+            elif any(kw in c for kw in ["完成","做了"]) and len(c) > 5:
+                nums = re.findall(r'\d+', c)
+                reply = f"【{username}】收到完成汇报。继续加油！"
+            else:
+                reply = f"【{username}】收到计划，完成后汇报具体结果。"
         else:
-            reply = ai_answer(user_id, c)  # 其他也走AI
+            # question 或 chat → AI老师回答
+            from ai import answer_question
+            answer = answer_question(c, f"用户: {username}", "")
+            reply = f"【{username}】\n{answer}" if answer else f"【{username}】收到。有什么学习问题尽管问。"
 
         from wechat_gateway.wecom_adapter.wecom_worker import enqueue_message
         enqueue_message(user_id, content, str(msg_id), chat_id)

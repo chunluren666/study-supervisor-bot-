@@ -1,19 +1,16 @@
 # -*- coding: utf-8 -*-
-"""
-AI 模块 — 严格考研监督老师
-"""
+"""AI 模块 — 专业考研辅导老师"""
 
 import json, time, urllib.request, urllib.error
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 
 
 def _call_deepseek(system_prompt: str, user_message: str,
-                   temperature: float = 0.3) -> str:
+                   temperature: float = 0.7) -> str:
+    """调用DeepSeek，1次重试。用于问答场景temperature偏高，监督场景偏低"""
     if not DEEPSEEK_API_KEY:
-        return _fallback_parse(user_message)
-
-    MAX_RETRIES, RETRY_DELAY = 1, 1  # 快速失败, fallback秒回
-    for attempt in range(MAX_RETRIES):
+        return ""
+    for attempt in range(2):
         try:
             body = json.dumps({
                 "model": DEEPSEEK_MODEL,
@@ -21,128 +18,113 @@ def _call_deepseek(system_prompt: str, user_message: str,
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
                 ],
-                "temperature": temperature, "max_tokens": 500,
+                "temperature": temperature, "max_tokens": 600,
             }).encode("utf-8")
             req = urllib.request.Request(f"{DEEPSEEK_BASE_URL}/chat/completions", data=body,
                 headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}",
                          "Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=25) as resp:
                 return json.loads(resp.read().decode("utf-8"))["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(RETRY_DELAY)
-    return _fallback_parse(user_message)
+        except Exception:
+            if attempt == 0: time.sleep(1)
+    return ""
 
 
-# ── 回退 ──
+# ── 考研老师系统提示词 ──
 
-def _fallback_parse(msg: str) -> str:
-    if any(kw in msg for kw in ["任务", "今天完成", "提交", "截止", "负责"]):
-        import re
-        names = list(set(re.findall(r'([一-龥]{2,4})(?=负责|完成|提交|和)', msg)))
-        return json.dumps({"intent": "task_publish", "title": msg[:50], "content": msg,
-                           "deadline": None, "assignees": names}, ensure_ascii=False)
-    if any(kw in msg for kw in ["完成了", "做完了", "好了", "搞定了", "提交了"]):
-        return json.dumps({"intent": "task_complete", "task_hint": msg}, ensure_ascii=False)
-    return json.dumps({"intent": "unknown"}, ensure_ascii=False)
+TEACHER_SYSTEM = """你是一名专业考研辅导老师，同时负责学习监督。你的名字叫"考研监督老师"。
 
+## 你的职责
 
-# ── 1. 消息解析 — 严格老师 ──
+1. **解答考研相关问题**：数学、英语、政治、专业课的学习方法、复习规划、题目讲解、心态调整
+2. **监督学习进度**：记录学生计划、审核完成情况、提醒和鼓励
+3. **个性化建议**：根据学生的阶段和情况给出针对性指导
 
-TASK_PARSE_PROMPT = """你是一个**严格的考研监督老师**。分析学生发来的消息，判断类型。
+## 回答风格
 
-如果是**老师发布任务**，提取:
-{"intent":"task_publish","title":"任务标题","content":"完整内容","deadline":null,"assignees":["成员"]}
+- 像真实老师，自然、专业、有温度
+- 不说"建议多练习"这种空话——要具体到方法
+- 信息不足时主动追问，了解学生情况后再给建议
+- 非学习问题(天气/闲聊)可简短回应，但引导回学习
 
-如果是**学生学习汇报**，检查是否具体(有数字/学科名/教材/章节等):
-{"intent":"study_report","subjects":["学科"],"content":"摘要","specific":true/false,"completion":"完成情况"}
+## 学生信息
+{user_context}
 
-只返回JSON。"""
+## 近期对话
+{chat_history}
 
-
-def parse_task_message(message: str) -> dict:
-    result = _call_deepseek(TASK_PARSE_PROMPT, message)
-    try:
-        if "```" in result: result = result.split("```")[1].replace("json", "", 1)
-        return json.loads(result.strip())
-    except json.JSONDecodeError:
-        return {"intent": "unknown"}
+请用中文回答，控制在200字以内。"""
 
 
-# ── 2. 完成审核 — 严格要求具体信息 ──
+def answer_question(question: str, user_context: str = "", chat_history: str = "") -> str:
+    """回答考研问题"""
+    prompt = TEACHER_SYSTEM.format(user_context=user_context or "新学生，暂无信息",
+                                    chat_history=chat_history or "无")
+    return _call_deepseek(prompt, question, temperature=0.7)
 
-COMPLETE_CHECK_PROMPT = """你是一个有经验的考研监督老师。学生汇报了学习进度，你必须严格但不失鼓励地审核。
 
-追问这五项，缺什么问什么:
-1. 科目 — 数学/英语/政治？
-2. 内容 — 哪本书？哪套题？哪个章节？
-3. 数量 — 做了多少？
-4. 时间 — 花了多久？
-5. 结果 — 正确率？掌握了吗？错题整理了吗？
+# ── 意图分类 ──
 
-回复要求:
-- 5项全有 → 肯定+简短鼓励
-- 缺1-2项 → 先肯定已完成部分，再追问缺失的
-- 缺3项以上 → 指出不足，要求补充
-- 只说"做完了" → 直接说这不行，必须具体
+INTENT_PROMPT = """判断学生消息的意图类型，只返回一个词：
 
-任务要求: {task_content}
-学生提交: {user_message}
+- "task" — 提交学习计划或完成汇报（含数字、科目、任务描述）
+- "question" — 提问或求助（怎么、如何、不会、推荐、方法）
+- "chat" — 闲聊、情绪表达（压力、累、状态不好、加油、谢谢等）
 
-返回JSON: {"decision":"approved|need_more|rejected","reason":"你的回复（像老师说话）","quality":"good|ok|poor"}
+消息: {message}
+
+只返回一个词: task / question / chat"""
+
+
+def classify_intent(message: str) -> str:
+    result = _call_deepseek(INTENT_PROMPT.format(message=message), "", temperature=0.1)
+    result = result.strip().lower()
+    if "task" in result: return "task"
+    if "question" in result: return "question"
+    return "chat"
+
+
+# ── 完成审核 ──
+
+COMPLETE_CHECK_PROMPT = """学生提交了学习汇报。作为考研老师，你必须核实这五项：
+
+1. 科目
+2. 内容（哪本书/哪套题/哪个章节）
+3. 数量
+4. 时间
+5. 结果（正确率/掌握程度）
+
+缺3项以上→rejected:追问缺失项
+只说"做完了/好了"→rejected
+有具体数字→approved 或 need_more
+
+任务: {task_content}
+汇报: {user_message}
+
+JSON: {"decision":"approved|need_more|rejected","reason":"像老师说话的语气","quality":"good|ok|poor"}
 只返回JSON。"""
 
 
 def check_completion(task_content: str, user_message: str) -> dict:
     prompt = COMPLETE_CHECK_PROMPT.format(task_content=task_content, user_message=user_message)
-    result = _call_deepseek("你是一个严格的考研监督老师。只返回JSON。", prompt)
+    result = _call_deepseek(prompt, "", temperature=0.3)
     try:
         if "```" in result: result = result.split("```")[1].replace("json", "", 1)
         return json.loads(result.strip())
     except json.JSONDecodeError:
         if len(user_message) > 50:
-            return {"decision": "need_more", "reason": "请明确说明学科/内容/数量"}
-        return {"decision": "rejected", "reason": "这不是合格的学习汇报。请说明: 1.学科 2.内容 3.数量 4.时间 5.结果"}
+            return {"decision": "need_more", "reason": "请补充具体数字和结果"}
+        return {"decision": "rejected", "reason": "这不是合格的学习汇报。请说明科目/内容/数量/时间/结果"}
 
 
-# ── 3. 抽查评估 ──
+# ── 保留兼容接口 ──
 
-SPOT_CHECK_PROMPT = """你是一个严格的考研监督老师。你抽查了学生，根据回复评估状态。
-
-抽查: {question}
-学生回复: {answer}
-
-返回JSON: {"status":"good|normal|warning","comment":"评价","suggestion":"建议"}
-只返回JSON。"""
-
+def parse_task_message(message: str) -> dict:
+    """保留原有接口"""
+    return {"intent": "unknown"}
 
 def evaluate_spot_check(question: str, answer: str) -> dict:
-    prompt = SPOT_CHECK_PROMPT.format(question=question, answer=answer)
-    result = _call_deepseek("严格的考研监督老师。只返回JSON。", prompt)
-    try:
-        if "```" in result: result = result.split("```")[1].replace("json", "", 1)
-        return json.loads(result.strip())
-    except json.JSONDecodeError:
-        return {"status": "normal", "comment": "已记录", "suggestion": ""}
+    return {"status": "normal", "comment": "已记录", "suggestion": ""}
 
-
-# ── 4. 学习建议 ──
-
-STUDY_ADVICE_PROMPT = """你是严格的考研监督老师。根据学生的学习汇报，给出下一步建议。
-
-学生汇报: {report}
-学习评分: 完成率{completion}% 及时率{timeliness}% 连续{streak}天
-
-给出:
-1. 一句话评价
-2. 下一步具体建议(1-2条)
-3. 需要加强的地方
-
-格式: 简短段落，不超过100字。"""
-
-
-def generate_study_advice(report: str, completion: float, timeliness: float, streak: int) -> str:
-    prompt = STUDY_ADVICE_PROMPT.format(report=report, completion=completion,
-                                         timeliness=timeliness, streak=streak)
-    result = _call_deepseek("严格的考研监督老师。", prompt)
-    return result.strip() if result else "继续保持，加油！"
+def generate_study_advice(report, c, t, s):
+    return ""

@@ -200,6 +200,28 @@ def init_db():
             FOREIGN KEY (plan_id) REFERENCES daily_plans(id)
         );
 
+        -- 用户画像
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wecom_userid TEXT UNIQUE NOT NULL,
+            username TEXT DEFAULT '',
+            target_school TEXT DEFAULT '',
+            major TEXT DEFAULT '',
+            exam_subjects TEXT DEFAULT '',
+            study_stage TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- 聊天历史
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userid TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         -- Worker消息队列
         CREATE TABLE IF NOT EXISTS worker_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
