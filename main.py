@@ -89,7 +89,8 @@ logger = setup_logging()
 
 # ── 全局适配器 ──
 adapter: BaseWechatAdapter = None
-_last_msg_ids = []  # 去重: 最近处理的msg_id
+_last_msgs = {}     # 去重: {hash: timestamp}
+_last_reply_time = 0  # 频率限制
 
 
 def send_reply(text: str, room: str = ""):
@@ -216,14 +217,13 @@ def create_web_app():
         if not content:
             return "ok"
 
-        # 去重: 同一msg_id 5秒内只处理一次
-        global _last_msg_ids
-        dedup_key = f"{user_id}:{content[:30]}"
+        # 防重复: 进回调立刻锁3秒, 并发请求直接忽略
+        import hashlib
+        global _last_reply_time
         now = time.time()
-        _last_msg_ids = [(k, t) for k, t in _last_msg_ids if now - t < 5]
-        if any(k == dedup_key for k, _ in _last_msg_ids):
+        if now - _last_reply_time < 3:
             return "ok"
-        _last_msg_ids.append((dedup_key, now))
+        _last_reply_time = now
 
         if msg_id:
             log_wecom_message(str(msg_id), user_id, content, body_str, timestamp)
