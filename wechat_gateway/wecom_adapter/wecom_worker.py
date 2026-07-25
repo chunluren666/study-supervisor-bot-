@@ -1,121 +1,135 @@
 # -*- coding: utf-8 -*-
-"""后台消息 Worker — 异步处理队列, 避免阻塞回调"""
+"""
+消息队列 Worker — 异步处理 AI + 发送回复
+callback → save queue → return OK
+worker   → pickup → AI → send → update status
+"""
 
-import time, threading, logging
+import json, time, threading, logging
 from datetime import datetime
+from pathlib import Path
+from database import get_db
+
+LOG_DIR = Path(__file__).parent.parent.parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
 
 log = logging.getLogger("wecom_worker")
+log.setLevel(logging.INFO)
 
+STATUS_PENDING = "pending"
+STATUS_PROCESSING = "processing"
+STATUS_DONE = "done"
+STATUS_FAILED = "failed"
+
+
+# ── 队列操作 ──
+
+def enqueue_message(sender: str, content: str, msg_id: str = "", chat_id: str = ""):
+    """消息入队(在callback中调用)"""
+    db = get_db()
+    db.execute(
+        "INSERT INTO worker_queue (sender, content, msg_id, chat_id, status) VALUES (?, ?, ?, ?, ?)",
+        (sender, content, msg_id, chat_id, STATUS_PENDING)
+    )
+    db.commit()
+    db.close()
+    log.debug(f"入队: [{sender}] {content[:50]}")
+
+
+def get_next_pending() -> dict:
+    """取一条待处理消息并标记为processing"""
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM worker_queue WHERE status=? ORDER BY id ASC LIMIT 1",
+        (STATUS_PENDING,)
+    ).fetchone()
+    if not row:
+        db.close()
+        return {}
+    db.execute("UPDATE worker_queue SET status=?, started_at=? WHERE id=?",
+               (STATUS_PROCESSING, datetime.now().isoformat(), row["id"]))
+    db.commit()
+    db.close()
+    return dict(row)
+
+
+def mark_done(queue_id: int, reply: str, elapsed_ms: int):
+    db = get_db()
+    db.execute(
+        "UPDATE worker_queue SET status=?, reply=?, elapsed_ms=?, completed_at=? WHERE id=?",
+        (STATUS_DONE, reply, elapsed_ms, datetime.now().isoformat(), queue_id)
+    )
+    db.commit()
+    db.close()
+
+
+def mark_failed(queue_id: int, error: str, retry: int):
+    db = get_db()
+    status = STATUS_PENDING if retry < 3 else STATUS_FAILED
+    db.execute(
+        "UPDATE worker_queue SET status=?, retry_count=?, last_error=? WHERE id=?",
+        (status, retry, error, queue_id)
+    )
+    db.commit()
+    db.close()
+
+
+def cleanup_old(days: int = 7):
+    db = get_db()
+    db.execute("DELETE FROM worker_queue WHERE status IN ('done','failed') AND datetime(completed_at) < datetime('now', ?)",
+               (f'-{days} days',))
+    db.commit()
+    db.close()
+
+
+# ── Worker ──
 
 class MessageWorker:
     """后台消息处理器"""
 
-    def __init__(self, adapter, process_fn, send_fn):
-        """
-        adapter: WeComAdapter 实例
-        process_fn: task_manager.process_message
-        send_fn: adapter.send_message
-        """
-        self.adapter = adapter
-        self.process = process_fn
-        self.send = send_fn
+    def __init__(self, process_fn, send_fn):
+        self.process = process_fn  # task_manager.process_message
+        self.send = send_fn        # adapter.send_message
         self.running = False
-        self._processed = 0
-        self._failed = 0
-        self._last_latency = 0
+        self.stats = {"processed": 0, "failed": 0, "avg_ms": 0}
 
     def start(self):
         self.running = True
         t = threading.Thread(target=self._loop, daemon=True)
         t.start()
-        log.info("Worker 已启动")
+        log.info("Worker started")
 
     def stop(self):
         self.running = False
 
-    def stats(self) -> dict:
-        return {
-            "processed": self._processed,
-            "failed": self._failed,
-            "last_latency_ms": self._last_latency,
-            "queue_size": len(self.adapter._msg_queue) if hasattr(self.adapter, '_msg_queue') else 0,
-        }
-
     def _loop(self):
         while self.running:
             try:
-                msg = self.adapter.receive_message()
+                msg = get_next_pending()
                 if not msg:
                     time.sleep(0.5)
                     continue
 
-                sender = msg.get("sender", "")
-                content = msg.get("content", "")
+                queue_id = msg["id"]
+                sender = msg["sender"]
+                content = msg["content"]
                 t0 = time.time()
 
-                # 管理员命令
-                cmd_result = _handle_command(content, sender)
-                if cmd_result:
-                    self.send(cmd_result, msg.get("room", ""))
-                    self._processed += 1
-                    self._last_latency = int((time.time() - t0) * 1000)
-                    continue
-
-                # 正常消息流
                 try:
-                    reply = self.process(sender, content)
-                    if reply:
-                        self.send(reply, msg.get("room", ""))
-                    self._processed += 1
+                    reply = self.process(sender, content) or ""
+                    if reply and self.send:
+                        self.send(reply)
+                    elapsed = int((time.time() - t0) * 1000)
+                    mark_done(queue_id, reply, elapsed)
+                    self.stats["processed"] += 1
+                    self.stats["avg_ms"] = (self.stats["avg_ms"] * (self.stats["processed"] - 1) + elapsed) // self.stats["processed"]
+                    log.info(f"Done [{sender}] {elapsed}ms")
                 except Exception as e:
-                    self._failed += 1
-                    log.error(f"处理失败 [{sender}]: {e}")
-
-                self._last_latency = int((time.time() - t0) * 1000)
+                    retry = msg.get("retry_count", 0) + 1
+                    mark_failed(queue_id, str(e)[:200], retry)
+                    self.stats["failed"] += 1
+                    log.error(f"Failed [{sender}] retry={retry}: {e}")
 
             except Exception as e:
-                log.error(f"Worker异常: {e}")
+                log.error(f"Worker loop: {e}")
                 time.sleep(1)
-
-
-# ── 管理员命令系统 ──
-
-def _handle_command(content: str, sender: str) -> str:
-    """处理 /命令"""
-    if not content.startswith("/"):
-        return ""
-
-    from database import is_teacher_or_admin
-    if not is_teacher_or_admin(sender):
-        return f"@{sender} 只有老师/管理员可使用命令"
-
-    cmd = content.split()[0].lower()
-
-    if cmd == "/发布任务":
-        return "请直接发送任务内容, 格式: 完成XX任务, 截止XX, 成员XX负责"
-
-    if cmd == "/查看排名":
-        from study_score import get_leaderboard
-        lb = get_leaderboard()
-        lines = [" 学习排名:"]
-        for i, s in enumerate(lb[:5], 1):
-            lines.append(f"{i}. {s.get('member_name','?')} {s.get('overall_score',0):.0f}分")
-        return "\n".join(lines)
-
-    if cmd == "/查看风险":
-        from risk_analyzer import assess_all
-        risks = assess_all()
-        lines = [" 风险概览:"]
-        for r in risks:
-            emoji = {"low":"","medium":"","high":""}.get(r["risk_level"],"")
-            lines.append(f"{emoji} {r.get('member_name','?')}: {r['risk_level']} ({r.get('detail','')})")
-        return "\n".join(lines)
-
-    if cmd == "/生成周报":
-        from report_generator import generate_group_report
-        return generate_group_report("weekly")
-
-    if cmd == "/帮助":
-        return "命令: /发布任务 /查看排名 /查看风险 /生成周报"
-
-    return f"未知命令: {cmd}。输入 /帮助 查看可用命令"

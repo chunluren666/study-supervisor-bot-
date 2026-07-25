@@ -200,6 +200,23 @@ def init_db():
             FOREIGN KEY (plan_id) REFERENCES daily_plans(id)
         );
 
+        -- Worker消息队列
+        CREATE TABLE IF NOT EXISTS worker_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender TEXT NOT NULL,
+            content TEXT NOT NULL,
+            msg_id TEXT,
+            chat_id TEXT,
+            status TEXT DEFAULT 'pending',
+            reply TEXT,
+            retry_count INTEGER DEFAULT 0,
+            elapsed_ms INTEGER DEFAULT 0,
+            last_error TEXT,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         -- 企业微信消息日志（去重）
         CREATE TABLE IF NOT EXISTS wecom_message_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

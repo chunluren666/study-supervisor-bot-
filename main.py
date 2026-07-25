@@ -197,9 +197,13 @@ def create_web_app():
         if msg_id:
             log_wecom_message(str(msg_id), user_id, content, body_str, timestamp)
 
-        from runtime_stats import msg_received, msg_sent, msg_failed
+        from runtime_stats import msg_received
         msg_received()
         logger.info(f"[Callback] {user_id}: {content[:100]}")
+        # 入队即返回, worker异步处理AI+发送
+        from wechat_gateway.wecom_adapter.wecom_worker import enqueue_message
+        enqueue_message(user_id, content, str(msg_id), chat_id)
+        return "ok"
 
         # 对话学习: 记录用户偏好
         from chat_learner import get_learned_context
@@ -478,6 +482,13 @@ def main():
 
     # ── 调度器 ──
     group_bot = GroupBotAdapter()
+    from wechat_gateway.wecom_adapter.wecom_worker import MessageWorker
+    worker = MessageWorker(
+        process_fn=process_message,
+        send_fn=lambda t: adapter.send_message(t) if adapter else None
+    )
+    worker.start()
+    logger.info("Worker started")
     def group_broadcast(text: str):
         if group_bot.online:
             group_bot.send(text)
