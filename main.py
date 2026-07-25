@@ -89,6 +89,7 @@ logger = setup_logging()
 
 # ── 全局适配器 ──
 adapter: BaseWechatAdapter = None
+_last_msg_ids = []  # 去重: 最近处理的msg_id
 
 
 def send_reply(text: str, room: str = ""):
@@ -213,9 +214,16 @@ def create_web_app():
                 pass
 
         if not content:
-            # 记录未识别的请求用于调试
-            logger.warning(f"Unrecognized callback body (first 200 chars): {body_str[:200]}")
             return "ok"
+
+        # 去重: 同一msg_id 5秒内只处理一次
+        global _last_msg_ids
+        dedup_key = f"{user_id}:{content[:30]}"
+        now = time.time()
+        _last_msg_ids = [(k, t) for k, t in _last_msg_ids if now - t < 5]
+        if any(k == dedup_key for k, _ in _last_msg_ids):
+            return "ok"
+        _last_msg_ids.append((dedup_key, now))
 
         if msg_id:
             log_wecom_message(str(msg_id), user_id, content, body_str, timestamp)
