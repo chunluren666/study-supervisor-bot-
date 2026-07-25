@@ -239,7 +239,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
-        -- 企业微信消息日志（去重）
+        -- 企业微信消息日志（去重 + 生命周期）
         CREATE TABLE IF NOT EXISTS wecom_message_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             msg_id TEXT UNIQUE NOT NULL,
@@ -247,6 +247,10 @@ def init_db():
             content TEXT,
             raw_xml TEXT,
             timestamp TEXT,
+            status TEXT DEFAULT 'received',
+            reply TEXT,
+            reply_hash TEXT,
+            completed_at TIMESTAMP,
             processed BOOLEAN DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );

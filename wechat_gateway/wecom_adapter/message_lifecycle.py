@@ -47,10 +47,10 @@ def try_claim_message(msg_id: str, user_id: str, content: str) -> bool:
         db.close()
         return True
     except Exception as e:
-        log.error(f"Claim error: {e}")
+        log.error(f"Claim error (allowing): {e}")
         try: db.close()
         except: pass
-        return True  # 异常时放行, 宁可重复不能丢消息
+        return True  # 异常时放行, 宁可重复不能丢消息。首次运行表不存在也会放行
 
 
 def mark_completed(msg_id: str, user_id: str, content: str, reply: str):
