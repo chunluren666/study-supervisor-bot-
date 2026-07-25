@@ -259,9 +259,12 @@ def create_web_app():
             answer = answer_question(c, f"用户: {username}", "")
             reply = f"【{username}】\n{answer}" if answer else f"【{username}】收到。有问题尽管问。"
 
-        # 融合模式: 情绪+进度
-        from patterns import enhance_reply
-        reply = enhance_reply(user_id, username, c, reply)
+        # 融合模式: 情绪+进度 (失败不影响主回复)
+        try:
+            from patterns import enhance_reply
+            reply = enhance_reply(user_id, username, c, reply)
+        except Exception:
+            pass
 
         from wechat_gateway.wecom_adapter.wecom_worker import enqueue_message
         enqueue_message(user_id, content, str(msg_id), chat_id)
