@@ -251,15 +251,17 @@ def create_web_app():
                 plan = create_daily_plan(user_id, c)
                 reply = f"【{username}】\n{format_plan_reply(plan)}"
             elif any(kw in c for kw in ["完成","做了"]) and len(c) > 5:
-                nums = re.findall(r'\d+', c)
                 reply = f"【{username}】收到完成汇报。继续加油！"
             else:
                 reply = f"【{username}】收到计划，完成后汇报具体结果。"
         else:
-            # question 或 chat → AI老师回答
             from ai import answer_question
             answer = answer_question(c, f"用户: {username}", "")
-            reply = f"【{username}】\n{answer}" if answer else f"【{username}】收到。有什么学习问题尽管问。"
+            reply = f"【{username}】\n{answer}" if answer else f"【{username}】收到。有问题尽管问。"
+
+        # 融合模式: 情绪+进度
+        from patterns import enhance_reply
+        reply = enhance_reply(user_id, username, c, reply)
 
         from wechat_gateway.wecom_adapter.wecom_worker import enqueue_message
         enqueue_message(user_id, content, str(msg_id), chat_id)
