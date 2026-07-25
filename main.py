@@ -221,6 +221,8 @@ def create_web_app():
         enqueue_message(user_id, content, str(msg_id), chat_id)
         try:
             if adapter and hasattr(adapter, 'send_message'):
+                if not adapter.get_status().get('online'):
+                    adapter.start()  # 重新获取token
                 adapter.send_message(reply)
         except Exception:
             pass
