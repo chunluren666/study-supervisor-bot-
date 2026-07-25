@@ -200,12 +200,26 @@ def create_web_app():
         from runtime_stats import msg_received
         msg_received()
         logger.info(f"[Callback] {user_id}: {content[:100]}")
-        # 入队 + 立即同步处理 (worker兜底)
+        # 关键词秒回(不等AI) + 后台AI队列(后续优化)
+        import re
+        c = content.strip()
+        if any(kw in c for kw in ["今天","计划","安排"]) and len(c) > 5:
+            reply = f"收到今日计划。我会逐项跟进。完成后逐项汇报。"
+        elif len(c) < 4:
+            reply = "请说具体内容。参考格式: '今天做数学真题30道'"
+        elif any(kw in c for kw in ["你好","在吗"]):
+            reply = "在。直接说计划或进度吧。"
+        elif c in ["完成","做了","做完了","搞定","好了","OK","ok"]:
+            reply = "不够具体。科目?内容?数量?时间?结果?"
+        elif any(kw in c for kw in ["完成","做了"]) and len(c) > 10:
+            nums = re.findall(r'\d+', c)
+            reply = f"收到完成汇报。{'包含' + str(len(nums)) + '项数值' if nums else '下次请加上具体数字'}。继续加油!"
+        else:
+            reply = f"收到。请用格式: 科目/内容/数量/时间/结果"
+
         from wechat_gateway.wecom_adapter.wecom_worker import enqueue_message
         enqueue_message(user_id, content, str(msg_id), chat_id)
-        # 立即处理回复(不等worker)
         try:
-            reply = process_message(user_id, content) or "收到。请说明具体的学习内容、数量和时间。"
             if adapter and hasattr(adapter, 'send_message'):
                 adapter.send_message(reply)
         except Exception:
