@@ -506,13 +506,6 @@ def main():
 
     # ── 调度器 ──
     group_bot = GroupBotAdapter()
-    from wechat_gateway.wecom_adapter.wecom_worker import MessageWorker
-    worker = MessageWorker(
-        process_fn=process_message,
-        send_fn=lambda t: adapter.send_message(t) if adapter else None
-    )
-    worker.start()
-    logger.info("Worker started")
     def group_broadcast(text: str):
         if group_bot.online:
             group_bot.send(text)
