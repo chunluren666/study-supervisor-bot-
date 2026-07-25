@@ -222,10 +222,11 @@ def create_web_app():
         try:
             if adapter and hasattr(adapter, 'send_message'):
                 if not adapter.get_status().get('online'):
-                    adapter.start()  # 重新获取token
-                adapter.send_message(reply)
-        except Exception:
-            pass
+                    adapter.start()
+                ok = adapter.send_message(reply)
+                logger.info(f"Send result: {ok}")
+        except Exception as e:
+            logger.error(f"Send fail: {e}")
         return "ok"
 
         # 对话学习: 记录用户偏好
