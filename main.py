@@ -29,6 +29,29 @@ from runtime_stats import msg_received, msg_sent, msg_failed, health_update, get
 from wechat_gateway.wecom_group_bot.group_bot_adapter import GroupBotAdapter
 
 
+def ai_answer(user_id: str, content: str) -> str:
+    """调用AI回答考研相关问题, 3秒超时则关键词兜底"""
+    import threading, queue as qmod
+    q = qmod.Queue()
+    def call_ai():
+        try:
+            result = process_message(user_id, content)
+            if not result or "只有老师" in result:
+                # bypass permission check, use raw AI
+                from ai import _call_deepseek
+                prompt = f"你是考研辅导老师。学生问: {content}\n请简洁回答(100字内)，语气亲切专业。"
+                result = _call_deepseek("你是考研辅导老师，回答简洁专业。", prompt, temperature=0.7)
+            q.put(result or "")
+        except:
+            q.put("这个问题我暂时回答不了，换个问法试试？")
+    t = threading.Thread(target=call_ai, daemon=True)
+    t.start()
+    try:
+        return q.get(timeout=4)
+    except qmod.Empty:
+        return "思考中...请稍后再问。或者换个具体的问题。"
+
+
 def keyword_reply(user_id: str, content: str) -> str:
     """AI不可用时的秒回"""
     c = content
@@ -200,22 +223,30 @@ def create_web_app():
         from runtime_stats import msg_received
         msg_received()
         logger.info(f"[Callback] {user_id}: {content[:100]}")
-        # 关键词秒回(不等AI) + 后台AI队列(后续优化)
+        # 智能回复: 提问→AI回答, 计划→解析, 完成→审核
         import re
         c = content.strip()
-        if any(kw in c for kw in ["今天","计划","安排"]) and len(c) > 5:
-            reply = f"收到今日计划。我会逐项跟进。完成后逐项汇报。"
+
+        # 提问类 → 调用AI回答
+        is_question = any(kw in c for kw in ["什么","怎么","如何","为什么","哪个","哪本",
+            "推荐","建议","方法","技巧","规划","安排","多少","怎样","?","？",
+            "不会","不懂","帮忙","解释","说明","讲一下","介绍一下"])
+
+        if is_question:
+            reply = ai_answer(user_id, c)
+        elif any(kw in c for kw in ["今天","计划","安排"]) and len(c) > 5:
+            reply = f"收到计划。逐项跟进，完成后汇报。"
         elif len(c) < 4:
-            reply = "请说具体内容。参考格式: '今天做数学真题30道'"
+            reply = "请说具体内容。"
         elif any(kw in c for kw in ["你好","在吗"]):
-            reply = "在。直接说计划或进度吧。"
+            reply = "在。直接说计划、进度或提问吧。"
         elif c in ["完成","做了","做完了","搞定","好了","OK","ok"]:
             reply = "不够具体。科目?内容?数量?时间?结果?"
         elif any(kw in c for kw in ["完成","做了"]) and len(c) > 10:
             nums = re.findall(r'\d+', c)
-            reply = f"收到完成汇报。{'包含' + str(len(nums)) + '项数值' if nums else '下次请加上具体数字'}。继续加油!"
+            reply = f"收到完成汇报。继续加油!"
         else:
-            reply = f"收到。请用格式: 科目/内容/数量/时间/结果"
+            reply = ai_answer(user_id, c)  # 其他也走AI
 
         from wechat_gateway.wecom_adapter.wecom_worker import enqueue_message
         enqueue_message(user_id, content, str(msg_id), chat_id)
