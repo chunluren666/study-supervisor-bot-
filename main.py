@@ -217,14 +217,12 @@ def create_web_app():
         if not content:
             return "ok"
 
-        # 内存去重: 5秒内同内容不重复
-        import hashlib
-        global _last_reply_time
-        now = time.time()
-        msg_hash = hashlib.md5(content.encode()).hexdigest()
-        if now - _last_reply_time < 3:
+        # 消息生命周期: 数据库幂等, 防重复处理
+        from wechat_gateway.wecom_adapter.message_lifecycle import (
+            try_claim_message, mark_completed, mark_failed, save_reply_hash
+        )
+        if not try_claim_message(str(msg_id), user_id, content):
             return "ok"
-        _last_reply_time = now
 
         if msg_id:
             log_wecom_message(str(msg_id), user_id, content, body_str, timestamp)
@@ -275,6 +273,8 @@ def create_web_app():
                     adapter.start()
                 ok = adapter.send_message(reply)
                 logger.info(f"Send result: {ok}")
+                mark_completed(str(msg_id), user_id, content, reply)
+                save_reply_hash(str(msg_id), reply)
         except Exception as e:
             logger.error(f"Send fail: {e}")
         return "ok"
