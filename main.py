@@ -194,7 +194,16 @@ def create_web_app():
             logger.warning(f"Unrecognized callback body (first 200 chars): {body_str[:200]}")
             return "ok"
 
-        if msg_id and is_wecom_duplicate(str(msg_id)):
+        # 只按内容+时间窗口去重(30秒内相同内容算重复)
+        from database import get_db
+        db = get_db()
+        dup = db.execute(
+            "SELECT id FROM wecom_message_log WHERE user_id=? AND content=? "
+            "AND datetime(timestamp) > datetime('now','-30 seconds')",
+            (user_id, content)
+        ).fetchone()
+        db.close()
+        if dup:
             return "ok"
         if msg_id:
             log_wecom_message(str(msg_id), user_id, content, body_str, timestamp)
