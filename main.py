@@ -200,9 +200,16 @@ def create_web_app():
         from runtime_stats import msg_received
         msg_received()
         logger.info(f"[Callback] {user_id}: {content[:100]}")
-        # 入队即返回, worker异步处理AI+发送
+        # 入队 + 立即同步处理 (worker兜底)
         from wechat_gateway.wecom_adapter.wecom_worker import enqueue_message
         enqueue_message(user_id, content, str(msg_id), chat_id)
+        # 立即处理回复(不等worker)
+        try:
+            reply = process_message(user_id, content) or "收到。请说明具体的学习内容、数量和时间。"
+            if adapter and hasattr(adapter, 'send_message'):
+                adapter.send_message(reply)
+        except Exception:
+            pass
         return "ok"
 
         # 对话学习: 记录用户偏好
