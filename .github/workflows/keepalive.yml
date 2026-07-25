@@ -1,0 +1,9 @@
+name: Keep Bot Alive
+on:
+  schedule:
+    - cron: '*/2 * * * *'  # 每2分钟
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -s https://study-bot-rksm.onrender.com/ > /dev/null
