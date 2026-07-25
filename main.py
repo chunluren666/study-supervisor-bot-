@@ -27,6 +27,24 @@ from task_manager import process_message, generate_reminders, generate_stats_rep
 from scheduler import Scheduler
 from runtime_stats import msg_received, msg_sent, msg_failed, health_update, get_summary, get_weekly_report
 from wechat_gateway.wecom_group_bot.group_bot_adapter import GroupBotAdapter
+
+
+def keyword_reply(user_id: str, content: str) -> str:
+    """AI不可用时的秒回"""
+    c = content
+    # 计划类
+    if any(kw in c for kw in ['今天','计划','安排']):
+        return f"收到计划。格式参考: '今天做数学30道，背单词100个'\n我会逐项跟进。"
+    # 完成类
+    if any(kw in c for kw in ['完成','做了','做完']):
+        return f"不错！具体说说: 哪科？什么内容？做多少？正确率？错题整理了吗？"
+    # 关键词含数字
+    import re
+    nums = re.findall(r'\d+', c)
+    if nums:
+        return f"收到。记住汇报格式: 科目/内容/数量/时间/结果。比如'数学880, 30道选择, 1.5h, 错5道已整理'。"
+    # 默认
+    return f"收到。请用具体数字说明: 1.科目 2.内容 3.数量 4.时间 5.结果"
 from wechat_gateway.python_adapter.wechat_adapter import (
     create_adapter, MockAdapter, BaseWechatAdapter,
 )
@@ -193,33 +211,31 @@ def create_web_app():
             pass
 
         try:
-            # ── 秒回通道: 计划/打招呼/敷衍秒回 ──
+            # ── 一律秒回，不等AI ──
             from daily_plan_manager import is_daily_plan_message, create_daily_plan, format_plan_reply
-            fast_reply = ""
             if is_daily_plan_message(content):
                 plan = create_daily_plan(user_id, content)
-                fast_reply = format_plan_reply(plan)
+                reply = format_plan_reply(plan)
+            elif len(content.strip()) < 3:
+                reply = "请说具体内容。比如'今天做数学30道'或'完成了数学880, 30道错5道'。"
             elif any(kw in content.strip() for kw in ['你好','在吗','hi','hello']):
-                fast_reply = "你好同学，我在。发今天的计划或者汇报进度都可以。"
-            elif content.strip() in ['完成','做了','做完了','搞定','好了']:
-                fast_reply = "就这俩字可不行。来，具体说说：哪个科目？做了什么？做了多少？花多久？结果怎样？"
-
-            if fast_reply:
-                reply = fast_reply
+                reply = "在。直接说你的计划或进度吧。"
+            elif content.strip() in ['完成','做了','做完了','搞定','好了','OK','ok','嗯','哦','好']:
+                reply = "不够具体。哪个科目？做什么？做多少？花多久？结果如何？"
             else:
-                reply = process_message(user_id, content) or ""
-            # AI挂了时的严格老师关键词回退
-            if not reply:
-                kw = content
-                if any(w in kw for w in ['完成','做了','做完','搞定']):
-                    reply = f"[老师] 请具体说明:\n1. 学科?\n2. 内容(哪本书/哪套题)?\n3. 数量?\n4. 时间?\n5. 正确率/错题整理?"
-                elif any(w in kw for w in ['任务','作业','学习','提交','截止']):
-                    reply = f"[老师] 收到任务相关消息。请老师明确发布: 内容/截止时间/负责人。"
-                elif any(w in kw for w in ['你好','在吗','hi','hello']):
-                    reply = f"你好。我是考研监督老师。请直接汇报学习进度，格式:\n学科/内容/数量/时间/结果"
-                else:
-                    reply = f"请用具体的学习汇报格式:\n1.学科 2.内容 3.数量 4.时间 5.结果"
-
+                # AI 处理 (3秒超时, 超时就用关键词回退)
+                import threading, queue
+                q = queue.Queue()
+                def ai_worker():
+                    try: q.put(process_message(user_id, content) or "")
+                    except: q.put("")
+                t = threading.Thread(target=ai_worker, daemon=True)
+                t.start()
+                try:
+                    reply = q.get(timeout=3)
+                except queue.Empty:
+                    # AI超时, 关键词秒回
+                    reply = keyword_reply(user_id, content)
             try:
                 if adapter and hasattr(adapter, 'send_message'):
                     adapter.send_message(reply, room="")
