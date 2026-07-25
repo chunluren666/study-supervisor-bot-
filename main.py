@@ -217,13 +217,13 @@ def create_web_app():
         if not content:
             return "ok"
 
-        # 防重复: 进回调立刻锁3秒, 并发请求直接忽略
-        import hashlib
-        global _last_reply_time
-        now = time.time()
-        if now - _last_reply_time < 3:
-            return "ok"
-        _last_reply_time = now
+        # 数据库全局去重: 同msg_id只处理一次
+        if msg_id:
+            db = get_db()
+            exists = db.execute("SELECT id FROM wecom_message_log WHERE msg_id=?", (str(msg_id),)).fetchone()
+            db.close()
+            if exists:
+                return "ok"
 
         if msg_id:
             log_wecom_message(str(msg_id), user_id, content, body_str, timestamp)
